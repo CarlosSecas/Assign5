@@ -25,7 +25,7 @@
 ;  Programming languages: nine in x86, and one in bash
 ;  Date program began: 2025-Apr-7
 ;  Date of last update: 2025-Apr-12
-;  Files in this program: edison.asm, faraday.asm, tesla.asm, strlen.asm, itoa.asm, fputs.asm, fgets.asm, atof.asm, ftoa.asm, r.sh.
+;  Files in this program: edison.asm, faraday.asm, tesla.asm, strlen.asm, itoa.asm, fputs.asm, fgets.asm, atof.asm, ftoa.asm, acdc.inc, r.sh.
 ;  Testing: Alpha testing completed.  All functions are correct.
 ;  Status: Ready for release to customers
 ;

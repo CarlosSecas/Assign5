@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Program Name: An Assembly-Based Circuit Diagnostics Calculator
+# Author: Carlos Secas
+# Author Email: carlosJsecas@gmail.com
+# CWID: 886088269
+# Class: 240-09 Section 09
+# This file is the script file that accompanies the "An Assembly-Based Circuit Diagnostics Calculator" program.
+# Prepare for execution in normal mode (not gdb mode).
+
 nasm -f elf64 -o ftoa.o ftoa.asm
 
 nasm -f elf64 -o strlen.o strlen.asm
