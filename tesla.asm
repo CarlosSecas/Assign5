@@ -38,7 +38,7 @@
 ;  accessed remotely from a Windows 10 system.  
 ;
 ;This file:
-;  File name: manager.asm
+;  File name: tesla.asm
 ;  Language: X86-64
 ;  Max page width: 124 columns
 ;  Assemble (standard): nasm -f elf64 -o tesla.o tesla.asm
