@@ -54,138 +54,118 @@
 
 
 
-; declarations
+;===== Begin code area ========================================================================================================
+
+
+;Declarations
 global atof
 
-section .data
-    neg_mask dq 0x8000000000000000   ; Mask to flip the sign bit for negative numbers
+;Declare initialized data in this section
+segment .data
+; Constants for floating-point arithmetic.
+ten       dq 10.0        ; constant 10.0 for integer accumulation
+oneTenth  dq 0.1         ; constant 0.1 for fractional digit weight
 
-section .bss
-    align 64
-    storedata resb 832               ; Buffer to store the FPU state using xsave/xrstor
+;Declare uninitialized data in this section
+segment .bss
+ ;this section is empty
 
-section .text
+;Executable instructions in this section
+segment .text
+
 atof:
-    ; === Save all general-purpose and SIMD registers ===
-    push    rbp
-    mov     rbp, rsp
-    push    rbx
-    push    rcx
-    push    rdx
-    push    rsi
-    push    rdi
-    push    r8 
-    push    r9 
-    push    r10
-    push    r11
-    push    r12
-    push    r13
-    push    r14
-    push    r15
-    pushf
 
-    ; Save x87/FPU state
-    mov     rax, 7
-    mov     rdx, 0
-    xsave   [storedata]    
+;Block that backs up almost all GPRs
+;Back up the general purpose registers for the sole purpose of protecting the data of the caller.
+push rbp                                          ;Backup rbp
+mov  rbp,rsp                                      ;The base pointer now points to top of stack
+push rdi                                          ;Backup rdi
+push rsi                                          ;Backup rsi
+push rdx                                          ;Backup rdx
+push rcx                                          ;Backup rcx
+push r8                                           ;Backup r8
+push r9                                           ;Backup r9
+push r10                                          ;Backup r10
+push r11                                          ;Backup r11
+push r12                                          ;Backup r12
+push r13                                          ;Backup r13
+push r14                                          ;Backup r14
+push r15                                          ;Backup r15
+push rbx                                          ;Backup rbx
+pushf                                             ;Backup rflags
 
-    ; === rdi points to the null-terminated ASCII float string ===
-    mov     r15, rdi                ; Copy input string pointer to r15
+; Set xmm15 (the result) to 0.0
+xorpd   xmm15, xmm15
+; Load constant 10.0 into xmm14 and 0.1 into xmm13
+movsd   xmm14, [ten]
+movsd   xmm13, [oneTenth]
 
-    ; === Find the position of the decimal point ('.') ===
-    xor     r14, r14                ; r14 will store index of the radix point
-find_radix_loop:
-    cmp     byte[r15 + r14], '.'
-    je      found_radix_point
-    inc     r14
-    jmp     find_radix_loop
+integer_loop:
+; Load next character from string (simulate movzx)
+mov     al, byte [rdi]     ; load a byte into al
+and     eax, 0xFF          ; zero-extend into eax using AND
+cmp     eax, 0             ; compare to null terminator
+je      finish_number      ; if zero, finished
+cmp     al, '.'            ; is it a decimal point?
+je      fractional_process
+cmp     al, '0'
+jb      finish_number      ; if below '0', stop processing
+cmp     al, '9'
+ja      finish_number      ; if above '9', stop processing
+sub     al, '0'            ; convert ASCII digit to numeric value
+; (eax now holds a value between 0 and 9)
+cvtsi2sd xmm12, eax         ; convert integer digit to double (in xmm12)
+mulsd   xmm15, xmm14         ; result = result * 10.0
+addsd   xmm15, xmm12         ; result = result + digit value
+add     rdi, 1             ; move to next character (using add instead of inc)
+jmp     integer_loop
 
-found_radix_point:
-    ; === Set up integer part parsing ===
-    xor     r13, r13                ; r13 = accumulated integer value
-    mov     r12, 1                  ; r12 = digit multiplier (1, 10, 100, ...)
-    mov     r11, r14                ; r11 = index before radix
-    dec     r11
-    xor     r10, r10                ; r10 = 1 if negative, 0 if positive
+;Passing decimal point after done with int
+fractional_process:
+add     rdi, 1             ; skip the decimal point
+; Set initial fractional weight in xmm11 = 0.1
+movsd   xmm11, [oneTenth]
 
-parse_integer:
-    mov     al, byte[r15 + r11]
-    cmp     al, '+'
-    je      finish_parse_integer
-    cmp     al, '-'
-    je      parse_integer_negative
+;Process the right side of the decimal
+fraction_loop:
+mov     al, byte [rdi]
+and     eax, 0xFF
+cmp     eax, 0
+je      finish_number
+cmp     al, '0'
+jb      finish_number
+cmp     al, '9'
+ja      finish_number
+sub     al, '0'
+cvtsi2sd xmm12, eax         ; convert digit to double
+mulsd   xmm12, xmm11         ; multiply by current weight
+addsd   xmm15, xmm12         ; add to result
+mulsd   xmm11, xmm13         ; update weight: weight = weight * 0.1
+add     rdi, 1             ; move to next character
+jmp     fraction_loop
 
-    ; === Convert digit and accumulate total ===
-    sub     al, '0'                 ; Convert ASCII to integer (0-9)
-    imul    rax, r12
-    add     r13, rax
-    imul    r12, 10                 ; Update multiplier
-    dec     r11
-    cmp     r11, 0
-    jge     parse_integer
-    jmp     finish_parse_integer
 
-parse_integer_negative:
-    mov     r10, 1                  ; Set flag for negative number
+finish_number:
+;Move the float to xmm0 so it is returned to caller
+movsd xmm0, xmm15
 
-finish_parse_integer:
-    ; === Parse the decimal part after the '.' ===
-    mov     rax, 10
-    cvtsi2sd xmm11, rax            ; xmm11 = 10.0
-    xorpd   xmm13, xmm13           ; xmm13 = decimal total
-    movsd   xmm12, xmm11           ; xmm12 = divisor (10, 100, 1000, ...)
-    inc     r14                    ; Move past '.'
+;Restore all general purpose registers to their original values
+popf                                    ;Restore rflags
+pop rbx                                 ;Restore rbx
+pop r15                                 ;Restore r15
+pop r14                                 ;Restore r14
+pop r13                                 ;Restore r13
+pop r12                                 ;Restore r12
+pop r11                                 ;Restore r11
+pop r10                                 ;Restore r10
+pop r9                                  ;Restore r9
+pop r8                                  ;Restore r8
+pop rcx                                 ;Restore rcx
+pop rdx                                 ;Restore rdx
+pop rsi                                 ;Restore rsi
+pop rdi                                 ;Restore rdi
+pop rbp                                 ;Restore rbp
 
-parse_decimal:
-    mov     al, byte [r15 + r14]
-    sub     al, '0'                ; Convert ASCII to integer
+ret
 
-    cvtsi2sd xmm0, rax
-    divsd   xmm0, xmm12
-    addsd   xmm13, xmm0
-    mulsd   xmm12, xmm11           ; Increase divisor (x10)
-
-    inc     r14
-    cmp     byte[r15 + r14], 0     ; Check for null terminator
-    jne     parse_decimal
-
-    ; === Combine integer and decimal parts ===
-    cvtsi2sd xmm0, r13             ; xmm0 = float(integer part)
-    addsd   xmm0, xmm13            ; xmm0 = integer + decimal
-
-    ; === Apply negation if needed ===
-    cmp     r10, 0
-    je      return
-    movsd   xmm1, [neg_mask]
-    xorpd   xmm0, xmm1             ; Flip sign bit
-
-return:
-    ; === Move result to stack temporarily ===
-    push    qword 0
-    movsd   [rsp], xmm0
-
-    ; Restore x87/FPU state
-    mov     rax, 7
-    mov     rdx, 0
-    xrstor  [storedata]
-
-    movsd   xmm0, [rsp]
-    pop     rax
-
-    ; === Restore all saved registers ===
-    popf          
-    pop     r15
-    pop     r14
-    pop     r13
-    pop     r12
-    pop     r11
-    pop     r10
-    pop     r9 
-    pop     r8 
-    pop     rdi
-    pop     rsi
-    pop     rdx
-    pop     rcx
-    pop     rbx
-    pop     rbp
-    ret
+;End of the function atof   ====================================================================
